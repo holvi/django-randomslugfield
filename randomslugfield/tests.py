@@ -31,6 +31,16 @@ class MaxSlugs(models.Model):
     slug = RandomSlugField(length=1, exclude_lower=True, exclude_upper=True)
 
 
+class LowercaseVowelRandomSlugField(RandomSlugField):
+    def generate_charset(self, exclude_upper, exclude_lower,
+                         exclude_digits, exclude_vowels):
+        return 'aeiou'
+
+
+class LowercaseVowelCaseInsensitiveSlug(models.Model):
+    slug = LowercaseVowelRandomSlugField(length=1, case_insensitive=True)
+
+
 class RandomSlugTestCase(TestCase):
     def setUp(self):
         self.lower = 'abcdefghijklmnopqrstuvwxyz'
@@ -110,7 +120,29 @@ class RandomSlugTestCase(TestCase):
         '''Test to make sure max_length is correctly set.'''
         field = RandomSlugField(length=10, max_length=255)
         self.assertEqual(field.max_length, 255)
-    
+
     def test_max_length_defaults_to_length(self):
         field = RandomSlugField(length=10)
         self.assertEqual(field.max_length, 10)
+
+    def test_case_insensitive_slug_values(self):
+        s = LowercaseVowelCaseInsensitiveSlug.objects.create()
+        s.slug = 'A'
+        s.save()
+        s = LowercaseVowelCaseInsensitiveSlug.objects.create()
+        s.slug = 'E'
+        s.save()
+        s = LowercaseVowelCaseInsensitiveSlug.objects.create()
+        s.slug = 'I'
+        s.save()
+        s = LowercaseVowelCaseInsensitiveSlug.objects.create()
+        s.slug = 'O'
+        s.save()
+        # the slug created should skip other values as case insensitive
+        s = LowercaseVowelCaseInsensitiveSlug.objects.create()
+        self.assertEqual(s.slug, 'u')
+        # raise exception as no more values available even though they
+        # are available when checking case insensitive.
+        self.assertRaises(
+            FieldError,
+            LowercaseVowelCaseInsensitiveSlug.objects.create)

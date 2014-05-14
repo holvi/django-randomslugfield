@@ -37,10 +37,14 @@ class RandomSlugField(SlugField):
     """
 
     def __init__(self, length=None, exclude_upper=False, exclude_lower=False,
-                 exclude_digits=False, exclude_vowels=False, *args, **kwargs):
+                 exclude_digits=False, exclude_vowels=False,
+                 case_insensitive=False,
+                 *args, **kwargs):
         kwargs.setdefault('blank', True)
         kwargs.setdefault('editable', False)
         kwargs.setdefault('unique', True)
+
+        self.case_insensitive = case_insensitive
 
         if length is None:
             raise ValueError("Missing 'length' argument.")
@@ -69,7 +73,7 @@ class RandomSlugField(SlugField):
         if exclude_upper:
             chars = chars.replace(string.ascii_uppercase, '')
         if exclude_lower:
-            chars =  chars.replace(string.ascii_lowercase, '')
+            chars = chars.replace(string.ascii_lowercase, '')
         if exclude_digits:
             chars = chars.replace(string.digits, '')
         if exclude_vowels:
@@ -89,6 +93,10 @@ class RandomSlugField(SlugField):
         if model_instance.pk:
             queryset = queryset.exclude(pk=model_instance.pk)
 
+        lookup_key = self.attname
+        if self.case_insensitive:
+            lookup_key = "%s__iexact" % lookup_key
+
         # Form a kwarg dict used to impliment any unique_together
         # contraints.
         kwargs = {}
@@ -96,12 +104,12 @@ class RandomSlugField(SlugField):
             if self.attname in params:
                 for param in params:
                     kwargs[param] = getattr(model_instance, param, None)
-        kwargs[self.attname] = slug
+        kwargs[lookup_key] = slug
 
         while queryset.filter(**kwargs):
             slug = (''.join(random.choice(self.chars)
                     for _ in range(self.length)))
-            kwargs[self.attname] = slug
+            kwargs[lookup_key] = slug
 
         return slug
 
