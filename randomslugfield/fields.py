@@ -1,19 +1,16 @@
-import random
 import re
-import string
 
 from django.core.exceptions import FieldError
 from django.db.models import SlugField
+from django.utils.crypto import get_random_string
 
 
 class RandomSlugField(SlugField):
-    """ RandomSlugField
-
-    Generates a random ascii based slug eg. www.example.com/kEwD58P
+    """Generates a random ascii based slug eg. www.example.com/kEwD58P
 
     By default sets editable=False, blank=True, and unique=True.
 
-    Requires arguments:
+    Required arguments:
 
         length
             Specifies the length of the generated slug. (integer)
@@ -56,33 +53,36 @@ class RandomSlugField(SlugField):
             self.exclude_lower = exclude_lower
             self.exclude_digits = exclude_digits
             self.exclude_vowels = exclude_vowels
-        self.chars = self.generate_charset(exclude_upper=self.exclude_upper,
-                                           exclude_lower=self.exclude_lower,
-                                           exclude_digits=self.exclude_digits,
-                                           exclude_vowels=self.exclude_vowels)
-        kwargs['max_length'] = self.length
+
+        self.chars = ('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+                      '0123456789')
+        if self.exclude_upper:
+            self.chars = self.chars.replace('ABCDEFGHIJKLMNOPQRSTUVWXYZ', '')
+        if self.exclude_lower:
+            self.chars = self.chars.replace('abcdefghijklmnopqrstuvwxyz', '')
+        if self.exclude_digits:
+            self.chars = self.chars.replace('0123456789', '')
+        if self.exclude_vowels:
+            self.chars = re.sub(r'[aeiouAEIOU]', '', self.chars)
+
+        kwargs.setdefault('max_length', self.length)
+        if kwargs['max_length'] < self.length:
+            raise ValueError("'max_length' must be equal to or greater than "
+                             "'length'.")
+
         super(RandomSlugField, self).__init__(*args, **kwargs)
 
-    def generate_charset(self, exclude_upper, exclude_lower,
-                         exclude_digits, exclude_vowels):
-        chars = string.ascii_letters + string.digits
-        if exclude_upper:
-            chars = chars.replace(string.ascii_uppercase, '')
-        if exclude_lower:
-            chars = chars.replace(string.ascii_lowercase, '')
-        if exclude_digits:
-            chars = chars.replace(string.digits, '')
-        if exclude_vowels:
-            chars = re.sub(r'[aeiouAEIOU]', '', chars)
-        return chars
-
     def generate_slug(self, model_instance):
+        """Returns a unique slug."""
         queryset = model_instance.__class__._default_manager.all()
 
-        if queryset.count() >= len(self.chars)**self.length:
+        # Only count slugs that match current length to prevent issues
+        # when pre-existing slugs are a different length.
+        lookup = {'%s__regex' % self.attname: r'^.{%s}$' % self.length}
+        if queryset.filter(**lookup).count() >= len(self.chars)**self.length:
             raise FieldError("No available slugs remaining.")
 
-        slug = ''.join(random.choice(self.chars) for _ in range(self.length))
+        slug = get_random_string(self.length, self.chars)
 
         # Exclude the current model instance from the queryset used in
         # finding next valid slug.
@@ -103,9 +103,8 @@ class RandomSlugField(SlugField):
         kwargs[lookup_key] = slug
 
         while queryset.filter(**kwargs):
-            slug = (''.join(random.choice(self.chars)
-                    for _ in range(self.length)))
-            kwargs[lookup_key] = slug
+            slug = get_random_string(self.length, self.chars)
+            kwargs[self.attname] = slug
 
         return slug
 
@@ -116,8 +115,22 @@ class RandomSlugField(SlugField):
             setattr(model_instance, self.attname, value)
         return value
 
+    def deconstruct(self):
+        name, path, args, kwargs = super(RandomSlugField, self).deconstruct()
+        kwargs['length'] = self.length
+        # Only include kwarg if it's not the default
+        if self.exclude_upper:
+            kwargs['exclude_upper'] = True
+        if self.exclude_lower:
+            kwargs['exclude_lower'] = True
+        if self.exclude_digits:
+            kwargs['exclude_digits'] = True
+        if self.exclude_vowels:
+            kwargs['exclude_vowels'] = True
+        return name, path, args, kwargs
+
     def south_field_triple(self):
-        "Returns a suitable description of this field for South."
+        """Returns a suitable description of this field for South."""
         # We'll just introspect the _actual_ field.
         from south.modelsinspector import introspector
         field_class = '%s.%s' % (self.__module__, self.__class__.__name__)
