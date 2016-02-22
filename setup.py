@@ -5,7 +5,7 @@ with open('README.rst') as f:
 
 setup(
     name="django-randomslugfield",
-    version="0.3.0",
+    version="0.3.0.post.dev1",
     author="Mike Johnson",
     author_email="mkrjhnsn@gmail.com",
     packages=['randomslugfield'],
